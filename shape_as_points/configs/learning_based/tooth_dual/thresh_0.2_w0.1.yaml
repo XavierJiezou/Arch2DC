@@ -1,0 +1,10 @@
+inherit_from: configs/learning_based/tooth_dual/ours.yaml
+data:
+  global_dist_threshold: 0.2
+train:
+  out_dir: out/tooth_dual/thresh_0.2_w0.1
+  total_epochs: 100
+  validate_every: 2000000
+  validate_every_epoch: 5
+  checkpoint_every: 2000000
+  w_global: 0.1

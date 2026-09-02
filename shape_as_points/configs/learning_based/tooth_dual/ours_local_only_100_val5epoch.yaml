@@ -1,0 +1,6 @@
+inherit_from: configs/learning_based/tooth_dual/ours_local_only_100.yaml
+train:
+  out_dir: out/tooth_dual/ours_local_only_100_val5epoch_gpu1
+  validate_every: 2000000
+  validate_every_epoch: 5
+  checkpoint_every: 2000000

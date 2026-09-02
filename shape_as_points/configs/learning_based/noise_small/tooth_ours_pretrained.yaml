@@ -1,0 +1,26 @@
+inherit_from: configs/learning_based/noise_small/ours_pretrained.yaml
+
+data:
+  # Use a simple one-shape dataset under data/tooth_demo
+  dataset: Shapes3D
+  path: data/tooth_demo
+  class: null        # use all subfolders (e.g. "tooth")
+  # Do not use train/val/test split files; load all models
+  train_split: null
+  val_split: null
+  test_split: null
+  pointcloud_file: pointcloud.npz
+  multi_files: null
+  pointcloud_outlier_ratio: 0
+  padding: 0.1
+
+train:
+  # Only used to define out_dir; we rely on the pretrained model URL
+  out_dir: out/tooth_noise_005_ours
+
+generation:
+  exp_input: true
+  vis_n_outputs: 10
+  generate_mesh: true
+  generate_pointcloud: true
+  copy_input: true

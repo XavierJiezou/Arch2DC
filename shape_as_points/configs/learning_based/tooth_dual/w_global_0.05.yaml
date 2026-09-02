@@ -1,0 +1,8 @@
+inherit_from: configs/learning_based/tooth_dual/ours.yaml
+train:
+  out_dir: out/tooth_dual/w_global_0.05
+  total_epochs: 100
+  validate_every: 2000000
+  validate_every_epoch: 5
+  checkpoint_every: 2000000
+  w_global: 0.05

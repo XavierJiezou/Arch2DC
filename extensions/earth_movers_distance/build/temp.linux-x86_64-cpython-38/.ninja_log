@@ -1,0 +1,3 @@
+# ninja log v5
+1	21762	1743579971485359408	/data/zouxuechao/PCN-PyTorch/extensions/earth_movers_distance/build/temp.linux-x86_64-cpython-38/emd.o	6a438c4d7a0dcf37
+23	18106	1743580822455237125	/data/zouxuechao/PCN-PyTorch/extensions/earth_movers_distance/build/temp.linux-x86_64-cpython-38/emd_kernel.o	639f776afd11287b

@@ -1,0 +1,10 @@
+inherit_from: configs/learning_based/tooth_dual/ours.yaml
+train:
+  out_dir: out/tooth_dual/ours_local_only_100_gpu1
+  total_epochs: 100
+  w_psr_local: 1.0
+  w_cd_local: 0.1
+  w_normal_local: 0.05
+  w_global: 0.0
+  w_cd_global: 0.1
+  w_normal_global: 0.02

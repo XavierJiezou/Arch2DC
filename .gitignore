@@ -1,0 +1,14 @@
+.vscode
+__pycache__
+.idea
+data/
+3d.tar.gz
+# Ignore build outputs
+# extensions/*/build/
+*.o
+*.so
+logs/**/epochs/
+logs/**/checkpoints/
+results/**/image/
+results/**/output/
+envs/*

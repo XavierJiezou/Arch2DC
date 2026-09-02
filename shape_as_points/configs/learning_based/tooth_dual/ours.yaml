@@ -1,0 +1,46 @@
+inherit_from: configs/learning_based/noise_small/ours.yaml
+data:
+  train_list: null
+  val_list: null
+  test_list: null
+  pointcloud_n: 3000
+  num_gt_points: 10000
+  global_num_points: 10000
+  file0_surface_points: 50000
+  global_dist_threshold: 0.05
+  global_min_points: 2048
+  psr_cache_dir: cache/tooth_dual_psr/grid128
+model:
+  grid_res: 128
+  psr_sigma: 2
+  psr_tanh: True
+  normal_normalize: True
+  predict_normal: True
+  predict_offset: True
+  num_offset: 7
+train:
+  batch_size: 8
+  lr: 5e-4
+  out_dir: out/tooth_dual/ours
+  w_psr_local: 1.0
+  w_cd_local: 0.1
+  w_normal_local: 0.05
+  w_global: 0.3
+  w_cd_global: 0.1
+  w_normal_global: 0.02
+  model_selection_metric: loss
+  print_every: 100
+  checkpoint_every: 1000
+  validate_every: 1000
+  backup_every: 10000
+  visualize_every: 5000
+  total_epochs: 400000
+  n_workers: 4
+  n_workers_val: 0
+generation:
+  generation_dir: generation_tooth_dual
+  generate_mesh: true
+  generate_pointcloud: true
+  copy_input: true
+  psr_resolution: 128
+  psr_sigma: 2
