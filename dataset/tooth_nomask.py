@@ -9,7 +9,7 @@
 - 4号文件: 缺失处半颗牙齿的GT（本版本暂不使用）
 
 流程:
-1. 读取0号和1号文件，对齐后进行归一化
+1. 以1号文件（缺损牙弓 X1）的质心和最大半径归一化所有点云
 2. 模型输入: 1号文件（缺损上颌）
 3. 模型输出: 预测的缺失牙齿点云
 4. 监督信号: 3号文件（缺失处完整牙齿GT）
@@ -180,10 +180,13 @@ class ToothNoMask(Dataset):
             else:
                 gt_tooth_normals = self.estimate_normals(gt_tooth_points)
         
-        # 使用完整点云的统计量进行归一化（保证所有点云在同一坐标系）
-        complete_points_norm, center, scale = self.pc_norm(complete_points)
-        missing_points_norm, _, _ = self.pc_norm(missing_points, center, scale)
+        # 归一化只使用推理时可得的缺损牙弓 X1：以 X1 的质心和最大半径为基准，
+        # 同一组参数作用于 GT 牙冠和完整牙弓（二者仅作训练监督）
+        missing_points_norm, center, scale = self.pc_norm(missing_points)
+        complete_points_norm, _, _ = self.pc_norm(complete_points, center, scale)
         gt_tooth_points_norm, _, _ = self.pc_norm(gt_tooth_points, center, scale)
+        # X0 的质心/最大半径只用于评估时把结果换算到 X0 坐标系算指标，不进入模型输入
+        _, eval_center, eval_scale = self.pc_norm(complete_points)
         
         # 采样
         complete_sampled = self.sample_points(complete_points_norm, self.complete_num_points)
@@ -211,6 +214,8 @@ class ToothNoMask(Dataset):
                 'complete_pc': torch.tensor(complete_sampled, dtype=torch.float32),
                 'norm_center': torch.tensor(center, dtype=torch.float32),
                 'norm_scale': torch.tensor(scale, dtype=torch.float32),
+                'eval_center': torch.tensor(eval_center, dtype=torch.float32),
+                'eval_scale': torch.tensor(eval_scale, dtype=torch.float32),
             }
 
             if self.return_colors:
@@ -230,6 +235,8 @@ class ToothNoMask(Dataset):
             'complete_pc': torch.tensor(complete_sampled, dtype=torch.float32),
             'norm_center': torch.tensor(center, dtype=torch.float32),
             'norm_scale': torch.tensor(scale, dtype=torch.float32),
+            'eval_center': torch.tensor(eval_center, dtype=torch.float32),
+            'eval_scale': torch.tensor(eval_scale, dtype=torch.float32),
         }
 
         if self.return_colors:
@@ -244,6 +251,8 @@ class ToothNoMask(Dataset):
                 'complete_color': torch.tensor(complete_colors_sampled, dtype=torch.float32),
                 'norm_center': torch.tensor(center, dtype=torch.float32),
                 'norm_scale': torch.tensor(scale, dtype=torch.float32),
+                'eval_center': torch.tensor(eval_center, dtype=torch.float32),
+                'eval_scale': torch.tensor(eval_scale, dtype=torch.float32),
             }
 
         return ret

@@ -50,12 +50,15 @@ class ToothDualTrainer:
         global_cd = self._one_sided_chamfer(points, gt_points_global)
         global_normals = self._normal_loss(points, normals, gt_points_global, gt_normals_global)
 
+        w_g = weights["w_global"]
+        # 归一化双流权重：local 系数 = (1 - w_g)，global 系数 = w_g，两者之和为 1
+        w_local = 1.0 - w_g
         loss_each = {
-            "local_psr": weights["w_psr_local"] * local_psr,
-            "local_cd": weights["w_cd_local"] * local_cd,
-            "local_normals": weights["w_normal_local"] * local_normals,
-            "global_cd": weights["w_global"] * weights["w_cd_global"] * global_cd,
-            "global_normals": weights["w_global"] * weights["w_normal_global"] * global_normals,
+            "local_psr": w_local * weights["w_psr_local"] * local_psr,
+            "local_cd": w_local * weights["w_cd_local"] * local_cd,
+            "local_normals": w_local * weights["w_normal_local"] * local_normals,
+            "global_cd": w_g * weights["w_cd_global"] * global_cd,
+            "global_normals": w_g * weights["w_normal_global"] * global_normals,
         }
         total = sum(loss_each.values())
         return total, loss_each, points, normals

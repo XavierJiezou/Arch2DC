@@ -12,9 +12,18 @@ from torch import nn
 from torch.nn import functional as F
 from torch.utils import model_zoo
 from skimage import measure, img_as_float32
-from pytorch3d.structures import Meshes
-from pytorch3d.renderer import PerspectiveCameras, rasterize_meshes
-from igl import adjacency_matrix, connected_components
+try:
+    from pytorch3d.structures import Meshes
+    from pytorch3d.renderer import PerspectiveCameras, rasterize_meshes
+except Exception:
+    Meshes = None
+    PerspectiveCameras = None
+    rasterize_meshes = None
+try:
+    from igl import adjacency_matrix, connected_components
+except Exception:
+    adjacency_matrix = None
+    connected_components = None
 import open3d as o3d
 
 ##################################################

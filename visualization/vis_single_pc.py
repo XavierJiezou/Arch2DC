@@ -42,9 +42,9 @@ def plot_pcd_one_view(filename, pcds, titles, suptitle='', sizes=None, cmap='Red
 
 
 if __name__ == '__main__':
-    # Path to the PLY file
-    # ply_file = "results/adapointr/epoch400/tooth_one_adapointr_num_query_1024_global_feature_dim_1024_bs4_e400/2/output/207_gt.ply"
-    ply_file = "/home/zouxuechao/tooth-surface-reconstruction/data/tooth2/297_1.ply"
+    # 用法：python visualization/vis_single_pc.py path/to/pointcloud.ply
+    import sys
+    ply_file = sys.argv[1] if len(sys.argv) > 1 else "data/tooth2/297_1.ply"
 
     # Check if file exists
     if not os.path.exists(ply_file):

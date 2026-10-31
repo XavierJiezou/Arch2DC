@@ -1,0 +1,12 @@
+# Arch2DC Stage II（论文设置）：SAP + 局部/全局双约束，β = 1 - w_global = 0.9，δ = global_dist_threshold = 0.05
+# 损失 = (1 - w_global) * [PSR + 0.1*CD + 0.05*Normal]_local + w_global * [0.1*CD + 0.02*Normal]_global
+inherit_from: configs/learning_based/tooth_dual/ours.yaml
+data:
+  global_dist_threshold: 0.05
+train:
+  out_dir: out/arch2dc_stage2
+  total_epochs: 100
+  validate_every: 2000000
+  validate_every_epoch: 5
+  checkpoint_every: 2000000
+  w_global: 0.1

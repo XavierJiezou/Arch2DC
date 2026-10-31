@@ -11,30 +11,19 @@ import numpy as np
 import open3d as o3d
 import torch
 from scipy.spatial import cKDTree
+from scipy.spatial.distance import directed_hausdorff
 from tqdm import tqdm
 
 abspath = os.path.abspath(__file__)
 dname = os.path.dirname(abspath)
 os.chdir(dname)
 sys.path.insert(0, dname)
-sys.path.insert(0, "/home/zouxuechao/noksr")
 
-from noksr.utils.evaluation import MeshEvaluator
-from src.data.tooth_dual import _load_vertices_and_normals, _sample_fixed, _sample_surface
+from src.mesh_evaluator import MeshEvaluator
+from src.data.tooth_dual import _load_vertices, _load_vertices_and_normals, _sample_fixed, _sample_surface, bbox_normalizer, sap_normalizer
 from src.dpsr import DPSR
 from src.model import Encode2Points
 from src.utils import export_pointcloud, load_config, load_model_manual, mc_from_psr
-
-
-def file0_normalizer(file0_path):
-    points, _ = _load_vertices_and_normals(file0_path)
-    p_min = points.min(axis=0)
-    p_max = points.max(axis=0)
-    center = ((p_min + p_max) * 0.5).astype(np.float32)
-    scale = float(np.max(p_max - p_min))
-    if scale <= 1.0e-8:
-        raise ValueError(f"Degenerate file0 bbox: {file0_path}")
-    return center, scale
 
 
 def to_sap(points, center, scale):
@@ -46,8 +35,12 @@ def sap_to_world(points, center, scale):
 
 
 def to_eval(points, center, scale):
-    """Use file0 bbox normalized to [-1, 1], matching previous tooth metrics scale."""
+    """指标坐标系：完整牙弓 X0 的包围盒，最长边映射到 [-1, 1]（仅用于算指标）。"""
     return (points - center[None, :]) / scale * 2.0
+
+
+def hausdorff_distance(pc1, pc2):
+    return max(directed_hausdorff(pc1, pc2)[0], directed_hausdorff(pc2, pc1)[0])
 
 
 def scene_name(pred_path):
@@ -56,7 +49,9 @@ def scene_name(pred_path):
 
 def missing_arch_path(file0_path):
     candidate = Path(str(file0_path).replace("_0.ply", "_1.ply"))
-    return candidate if candidate.exists() else Path(file0_path)
+    if not candidate.exists():
+        raise FileNotFoundError(f"Defective arch X1 not found: {candidate}")
+    return candidate
 
 
 def read_entries(list_path):
@@ -149,31 +144,11 @@ def normalize_o3d_mesh(mesh, center, scale):
     return out
 
 
-def toothmask_center_scale(file0_path):
-    points, _ = _load_vertices_and_normals(file0_path)
-    center = points.mean(axis=0)
-    scale = float(np.sqrt(np.sum((points - center[None, :]) ** 2, axis=1)).max())
-    if scale <= 1.0e-8:
-        raise ValueError(f"Degenerate ToothMask scale: {file0_path}")
-    return center.astype(np.float32), scale
-
-
-def read_colored_pointcloud(path, file0_path=None, color_space="toothmask"):
+def read_colored_pointcloud(path):
     pcd = o3d.io.read_point_cloud(str(path))
     if len(pcd.points) == 0 or not pcd.has_colors():
         return None, None
-    points = np.asarray(pcd.points, dtype=np.float64)
-    colors = np.asarray(pcd.colors, dtype=np.float64)
-    if color_space == "toothmask":
-        if file0_path is None:
-            raise ValueError("file0_path is required for toothmask color coordinates")
-        center, scale = toothmask_center_scale(file0_path)
-        points = points * scale + center[None, :]
-    elif color_space == "world":
-        pass
-    else:
-        raise ValueError(f"Unsupported color_space: {color_space}")
-    return points, colors
+    return np.asarray(pcd.points, dtype=np.float64), np.asarray(pcd.colors, dtype=np.float64)
 
 
 def transfer_vertex_colors(vertices, color_points, color_values):
@@ -186,51 +161,26 @@ def transfer_vertex_colors(vertices, color_points, color_values):
     return np.clip(color_values[nearest], 0.0, 1.0)
 
 
-def color_source_path(color_pred_dir, idx):
-    if color_pred_dir is None:
-        return None
-    path = Path(color_pred_dir) / f"{idx:03d}_pred_tooth.ply"
-    return path if path.exists() else None
-
-
 def main():
     parser = argparse.ArgumentParser(description="Evaluate SAP tooth dual reconstruction.")
-    parser.add_argument(
-        "config",
-        nargs="?",
-        default="/home/zouxuechao/shape_as_points/out/tooth_dual/ours_100_gpu1/config.yaml",
-    )
-    parser.add_argument(
-        "--checkpoint",
-        default="/home/zouxuechao/shape_as_points/out/tooth_dual/ours_100_gpu1/model_best.pt",
-    )
-    parser.add_argument(
-        "--test_list",
-        default="/home/zouxuechao/tooth-surface-reconstruction/results/nksr_predtooth/full_run/lists/test.lst",
-    )
-    parser.add_argument(
-        "--output_dir",
-        default="/home/zouxuechao/shape_as_points/out/tooth_dual/ours_100_gpu1/eval_test_best",
-    )
+    parser.add_argument("config", help="训练时保存的 config.yaml，或 configs/learning_based/tooth_dual/*.yaml")
+    parser.add_argument("--checkpoint", default=None, help="默认 <train.out_dir>/model_best.pt")
+    parser.add_argument("--test_list", required=True, help="Stage I 导出的 test.lst（三列：predtooth file0 file3）")
+    parser.add_argument("--output_dir", default=None, help="默认 <train.out_dir>/eval_test")
     parser.add_argument("--n_eval_pts", type=int, default=100000)
     parser.add_argument("--pointcloud_n", type=int, default=0)
     parser.add_argument("--max_samples", type=int, default=0)
-    parser.add_argument(
-        "--color_pred_dir",
-        default="/home/zouxuechao/tooth-surface-reconstruction/results/adapointr/"
-        "tooth_nomask_adapointr_rgb/tooth_mask/output",
-        help="Directory containing 000_pred_tooth.ply style colored AdaPoinTr predictions.",
-    )
-    parser.add_argument(
-        "--color_space",
-        default="toothmask",
-        choices=["toothmask", "world"],
-        help="Coordinate space of --color_pred_dir point clouds.",
-    )
     parser.add_argument("--no_cuda", action="store_true")
+    parser.add_argument("--seed", type=int, default=0, help="随机种子（输入重采样与 GT 表面采样），保证评估可复现")
     args = parser.parse_args()
 
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
     cfg = load_config(args.config, "configs/default.yaml")
+    if args.checkpoint is None:
+        args.checkpoint = os.path.join(cfg["train"]["out_dir"], "model_best.pt")
+    if args.output_dir is None:
+        args.output_dir = os.path.join(cfg["train"]["out_dir"], "eval_test")
     use_cuda = not args.no_cuda and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     print(f"设备: {device}")
@@ -264,10 +214,15 @@ def main():
     with torch.no_grad():
         for idx, (pred_path, file0_path, file3_path) in enumerate(tqdm(entries[:total], ncols=100)):
             name = scene_name(pred_path)
-            center, scale = file0_normalizer(file0_path)
+            x1_path = missing_arch_path(file0_path)
+            # 指标坐标系：完整牙弓 X0 的包围盒（仅用于算指标，不进入模型输入）
+            center, scale = bbox_normalizer(_load_vertices(str(file0_path)))
+            scale = float(scale)
 
             pred_points, pred_normals = _load_vertices_and_normals(pred_path)
-            inputs = np.clip(to_sap(pred_points, center, scale), 0.0, 0.99).astype(np.float32)
+            # SAP 推理坐标系：X1 ∪ 预测牙冠 的包围盒（推理时可得）
+            sap_center, sap_scale = sap_normalizer(str(x1_path), pred_points)
+            inputs = np.clip(to_sap(pred_points, sap_center, sap_scale), 0.0, 0.99).astype(np.float32)
             inputs, pred_normals = _sample_fixed(inputs, pred_normals, pointcloud_n)
 
             t0 = time.time()
@@ -277,18 +232,12 @@ def main():
             verts_sap, faces, _ = mc_from_psr(psr_grid, zero_level=zero_level)
             recon_time += time.time() - t0
 
-            verts_world = sap_to_world(verts_sap, center, scale)
-            points_world = sap_to_world(points[0].detach().cpu().numpy(), center, scale)
-            inputs_world = sap_to_world(inputs, center, scale)
+            verts_world = sap_to_world(verts_sap, sap_center, sap_scale)
+            points_world = sap_to_world(points[0].detach().cpu().numpy(), sap_center, sap_scale)
+            inputs_world = sap_to_world(inputs, sap_center, sap_scale)
             normals_np = normals[0].detach().cpu().numpy()
-            color_points, color_values = None, None
-            color_path = color_source_path(args.color_pred_dir, idx)
-            if color_path is not None:
-                color_points, color_values = read_colored_pointcloud(
-                    color_path, file0_path=file0_path, color_space=args.color_space
-                )
-            if color_points is None:
-                color_points, color_values = read_colored_pointcloud(file3_path, color_space="world")
+            # 牙冠颜色取自 Stage I 预测点云自带的 RGB（世界坐标）
+            color_points, color_values = read_colored_pointcloud(pred_path)
             vertex_colors = transfer_vertex_colors(verts_world, color_points, color_values)
 
             tooth_path = tooth_dir / f"{name}.ply"
@@ -314,20 +263,26 @@ def main():
             combined_eval_mesh = normalize_o3d_mesh(combined_mesh, center, scale)
             combined_eval = evaluator.eval_mesh(combined_eval_mesh, gt_arch_eval, gt_arch_normals)
 
+            hd_single = hausdorff_distance(verts_eval, gt_eval)
+            combined_verts_eval = to_eval(np.asarray(combined_mesh.vertices), center, scale)
+            hd_full = hausdorff_distance(combined_verts_eval, gt_arch_eval)
+
             row = {
                 "scene": name,
                 "chamfer-L1": float(eval_dict.get("chamfer-L1", -1)),
                 "f-score": float(eval_dict.get("f-score", -1)),
                 "normals": float(eval_dict.get("normals", -1)),
+                "hd": float(hd_single),
                 "combined_chamfer-L1": float(combined_eval.get("chamfer-L1", -1)),
                 "combined_f-score": float(combined_eval.get("f-score", -1)),
                 "combined_normals": float(combined_eval.get("normals", -1)),
+                "combined_hd": float(hd_full),
             }
             rows.append(row)
             tqdm.write(
                 f"[{idx + 1}/{total}] {name} "
-                f"CD={row['chamfer-L1']:.4f} F={row['f-score']:.4f} N={row['normals']:.4f} "
-                f"FullCD={row['combined_chamfer-L1']:.4f} FullN={row['combined_normals']:.4f}"
+                f"CD={row['chamfer-L1']:.4f} F={row['f-score']:.4f} N={row['normals']:.4f} HD={row['hd']:.4f} "
+                f"FullCD={row['combined_chamfer-L1']:.4f} FullN={row['combined_normals']:.4f} FullHD={row['combined_hd']:.4f}"
             )
             if use_cuda:
                 torch.cuda.empty_cache()
@@ -339,9 +294,11 @@ def main():
         "chamfer-L1",
         "f-score",
         "normals",
+        "hd",
         "combined_chamfer-L1",
         "combined_f-score",
         "combined_normals",
+        "combined_hd",
     ]
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
@@ -353,9 +310,11 @@ def main():
                 "chamfer-L1": float(np.mean([r["chamfer-L1"] for r in valid])),
                 "f-score": float(np.mean([r["f-score"] for r in valid])),
                 "normals": float(np.mean([r["normals"] for r in valid])),
+                "hd": float(np.mean([r["hd"] for r in valid])),
                 "combined_chamfer-L1": float(np.mean([r["combined_chamfer-L1"] for r in valid])),
                 "combined_f-score": float(np.mean([r["combined_f-score"] for r in valid])),
                 "combined_normals": float(np.mean([r["combined_normals"] for r in valid])),
+                "combined_hd": float(np.mean([r["combined_hd"] for r in valid])),
             }
             writer.writerow(mean_row)
         else:

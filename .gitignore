@@ -1,7 +1,7 @@
 .vscode
 __pycache__
 .idea
-data/
+/data/
 3d.tar.gz
 # Ignore build outputs
 # extensions/*/build/
@@ -12,3 +12,7 @@ logs/**/checkpoints/
 results/**/image/
 results/**/output/
 envs/*
+# Arch2DC outputs
+/results/stage1_pred/
+/outputs/
+/checkpoints/

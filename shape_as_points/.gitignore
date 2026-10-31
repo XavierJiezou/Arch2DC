@@ -148,3 +148,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Arch2DC: PSR cache and outputs
+/cache
